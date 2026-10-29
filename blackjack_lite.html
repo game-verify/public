@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Blackjack Lite Verify</title>
+    <link rel="stylesheet" href="./lib/main.css" />
+    <link rel="stylesheet" href="./lib/bootstrap/css/bootstrap.min.css" />
+    <style>
+      body {
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      .mono,
+      .code,
+      .hash-view,
+      .steps,
+      table {
+        font-family: Menlo, Consolas, "Courier New", monospace;
+      }
+      .code {
+        background-color: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 4px;
+        padding: 12px 14px;
+        font-size: 12.5px;
+        line-height: 1.6;
+        margin: 0;
+        overflow-x: auto;
+      }
+      /* ---- cards ---- */
+      .hand {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .hand-item {
+        text-align: center;
+      }
+      .pcard {
+        position: relative;
+        width: 48px;
+        height: 68px;
+        background-color: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+        color: #212529;
+      }
+      .pcard.red {
+        color: #dc3545;
+      }
+      .pcard .rank {
+        position: absolute;
+        top: 4px;
+        left: 6px;
+        font: 700 15px/1 Arial, sans-serif;
+      }
+      .pcard .suit {
+        position: absolute;
+        right: 5px;
+        bottom: 3px;
+        font: 24px/1 Arial, sans-serif;
+      }
+      .hand-item .rd {
+        margin-top: 4px;
+        font-size: 11px;
+        color: #6c757d;
+      }
+      /* ---- verification detail ---- */
+      .hash-view {
+        font-size: 13px;
+        word-break: break-all;
+        background-color: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 4px;
+        padding: 10px 12px;
+        letter-spacing: 0.05em;
+      }
+      .hash-view .c-head {
+        border-bottom: 2px solid #ffc107;
+      }
+      .hash-view .c-win {
+        background-color: #d4edda;
+      }
+      .legend {
+        font-size: 11px;
+        color: #6c757d;
+        letter-spacing: 0;
+        margin-top: 6px;
+      }
+      .legend i {
+        display: inline-block;
+        width: 18px;
+        height: 8px;
+        vertical-align: middle;
+        margin: 0 4px 2px 0;
+      }
+      .legend i.a {
+        height: 6px;
+        border-bottom: 2px solid #ffc107;
+      }
+      .legend i.b {
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+      }
+      .steps {
+        display: grid;
+        grid-template-columns: max-content max-content minmax(0, 1fr);
+        gap: 2px 14px;
+        font-size: 12.5px;
+        overflow-x: auto;
+      }
+      .steps .op {
+        color: #6c757d;
+        text-align: right;
+      }
+      .steps .val {
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .steps .val.hit {
+        color: #28a745;
+      }
+      .steps .note {
+        color: #adb5bd;
+        white-space: nowrap;
+      }
+      .steps .divider {
+        grid-column: 1 / -1;
+        border-top: 1px dashed #e9ecef;
+        margin: 5px 0;
+      }
+      .round-box {
+        border: 1px solid #e9ecef;
+        border-radius: 4px;
+        padding: 12px;
+        margin-bottom: 10px;
+      }
+      .round-head {
+        font-size: 13px;
+        margin-bottom: 10px;
+      }
+      .round-head .sep {
+        color: #ced4da;
+        margin: 0 6px;
+      }
+      /* ---- tables ---- */
+      .table-wrap {
+        overflow-x: auto;
+      }
+      .table-wrap table {
+        font-size: 12px;
+        margin-bottom: 0;
+      }
+      .table-wrap th,
+      .table-wrap td {
+        padding: 3px 6px;
+        text-align: center;
+        white-space: nowrap;
+      }
+      .table-wrap th {
+        color: #6c757d;
+        font-weight: 500;
+        text-align: right;
+        background-color: #f8f9fa;
+      }
+      .table-wrap td.hit {
+        background-color: #d4edda;
+        font-weight: 600;
+      }
+      .text-red {
+        color: #dc3545;
+      }
+      details summary {
+        cursor: pointer;
+        color: #6c757d;
+      }
+      details[open] summary {
+        margin-bottom: 12px;
+      }
+    </style>
+    <script src="./lib/react.production.min.js"></script>
+    <script src="./lib/react-dom.production.min.js"></script>
+    <script src="./lib/crypto-js.js"></script>
+    <script src="./lib/tools.js"></script>
+    <script src="./lib/hooks.js"></script>
+    <script src="./lib/babel.min.js"></script>
+    <script src="./lib/utils.js"></script>
+    <script src="./lib/card.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="text/babel">
+      const qs = tools.queryString();
+      const { useSetState } = hooks;
+
+      /**
+       * Spade A / Heart B / Club C / Diamond D
+       * A2345678910JQK -> decimal 1-13, hexadecimal 1-D
+       * allCards: suit = 10..13, point = 1..13, cardId = suit * 16 + point
+       */
+      const allCards = [];
+      for (let c = 10; c <= 13; c++) {
+        for (let v = 1; v <= 13; v++) {
+          allCards.push(c * 16 + v);
+        }
+      }
+
+      const EVENTS = 52;
+      const MAX_ROUND = 99;
+      // number of cards rendered when the link does not carry a round
+      const DEFAULT_ROUND = 10;
+      const HEAD_LEN = 15;
+      const WINDOW_LEN = 14;
+      const PRIME = 47;
+
+      const ALGORITHM_SOURCE = `const MAX_BORDER = Math.pow(2, -53);
+
+// hash = HMAC_SHA256(clientSeed:nonce:round, serverSeed)
+function getHash(serverSeed, clientSeed, nonce, round) {
+  return String(CryptoJS.HmacSHA256([clientSeed, nonce, round].join(':'), serverSeed));
+}
+
+// Sliding window: the first 15 hex chars mod prime 47 decide where the window starts
+function slideWindowNumber(hash, events) {
+  let index = BigInt('0x' + hash.substring(0, 15));
+  index = Number(index % BigInt(47));
+
+  let num = BigInt('0x' + hash.substring(index, index + 14)) >> BigInt(3);
+  num = Number(num) * MAX_BORDER;
+  return num * events;
+}
+
+// randomNumber in [0, 51], then mapped to a card
+function calcV2(serverSeed, clientSeed, nonce, round) {
+  const hash = getHash(serverSeed, clientSeed, nonce, round);
+  const randomNumber = Math.floor(slideWindowNumber(hash, 52));
+  return allCards[randomNumber];
+}`;
+
+      function useInputControl(initState) {
+        const [state, setState] = useSetState(initState);
+        const bind = (key) => ({
+          value: state[key],
+          onChange: (v) => setState({ [key]: v }),
+        });
+        return [state, setState, bind];
+      }
+
+      function Field({ label, value, onChange, ...others }) {
+        return (
+          <div className="form-group">
+            <label>{label}</label>
+            <input
+              className="form-control"
+              value={value}
+              onChange={onChange ? (e) => onChange(e.target.value) : undefined}
+              readOnly={!onChange}
+              {...others}
+            />
+          </div>
+        );
+      }
+
+      // hash = HMAC_SHA256(clientSeed:nonce:round, serverSeed)
+      function getHashString(serverSeed, clientSeed, nonce, round) {
+        return String(CryptoJS.HmacSHA256([clientSeed, nonce, round].join(":"), serverSeed));
+      }
+
+      // Identical to slideWindowNumber in lib/utils.js, but also returns the intermediate values
+      function slideWindowDetail(hash, events) {
+        const headHex = hash.substring(0, HEAD_LEN);
+        const headNum = BigInt("0x" + headHex);
+        const index = Number(headNum % BigInt(PRIME));
+
+        const windowHex = hash.substring(index, index + WINDOW_LEN);
+        const windowNum = BigInt("0x" + windowHex);
+        const shifted = windowNum >> BigInt(3);
+
+        const unit = Number(shifted) * MAX_BORDER;
+        const scaled = unit * events;
+        const result = Math.floor(scaled);
+
+        return { headHex, headNum, index, windowHex, windowNum, shifted, unit, scaled, result };
+      }
+
+      function getCardStr(cardId) {
+        const card = new Card(cardId);
+        return card.suitStr + card.pointStr;
+      }
+
+      function isRed(cardId) {
+        return new Card(cardId).suit % 2 !== 0;
+      }
+
+      function toHex(cardId) {
+        return cardId.toString(16).toUpperCase();
+      }
+
+      // Blackjack point value of a card: face cards count as 10, an ace is shown as 1 / 11
+      function pointValue(cardId) {
+        const point = cardId % 16;
+        return point === 1 ? "1 / 11" : String(Math.min(point, 10));
+      }
+
+      function buildDeal(serverSeed, clientSeed, nonce, count) {
+        const deal = [];
+        for (let round = 0; round < count; round++) {
+          const key = [clientSeed, nonce, round].join(":");
+          const hash = getHashString(serverSeed, clientSeed, nonce, round);
+          const detail = slideWindowDetail(hash, EVENTS);
+          deal.push({ round, key, hash, detail, cardId: allCards[detail.result] });
+        }
+        return deal;
+      }
+
+      function PlayingCard({ cardId, round }) {
+        const card = new Card(cardId);
+        return (
+          <div className="hand-item">
+            <div className={"pcard" + (isRed(cardId) ? " red" : "")}>
+              <div className="rank">{card.pointStr}</div>
+              <div className="suit">{card.suitStr}</div>
+            </div>
+            <div className="rd">#{round}</div>
+          </div>
+        );
+      }
+
+      // Highlight the leading 15 chars and the sliding window range inside the hash
+      function HashView({ hash, detail }) {
+        const chars = hash.split("").map((ch, i) => {
+          const classNames = [];
+          if (i < HEAD_LEN) classNames.push("c-head");
+          if (i >= detail.index && i < detail.index + WINDOW_LEN) classNames.push("c-win");
+          return classNames.length ? (
+            <span key={i} className={classNames.join(" ")}>
+              {ch}
+            </span>
+          ) : (
+            ch
+          );
+        });
+        return (
+          <div className="hash-view mb-3">
+            {chars}
+            <div className="legend">
+              <i className="a" />
+              hash[0, {HEAD_LEN}) decides the window offset &nbsp;&nbsp;
+              <i className="b" />
+              hash[{detail.index}, {detail.index + WINDOW_LEN}) sliding window
+            </div>
+          </div>
+        );
+      }
+
+      function Step({ op, value, note, hit }) {
+        return (
+          <React.Fragment>
+            <div className="op">{op}</div>
+            <div className={"val" + (hit ? " hit" : "")}>{value}</div>
+            <div className="note">{note}</div>
+          </React.Fragment>
+        );
+      }
+
+      function Round({ round, key0, hash, detail }) {
+        const cardId = allCards[detail.result];
+        return (
+          <div className="round-box">
+            <div className="round-head">
+              <strong>round {round}</strong>
+              <span className="sep">/</span>
+              <span className={isRed(cardId) ? "text-red" : ""}>{getCardStr(cardId)}</span>
+              <span className="sep">/</span>
+              <span className="text-muted">index {detail.result}</span>
+              <span className="sep">/</span>
+              <span className="text-muted">
+                cardId {cardId} / 0x{toHex(cardId)}
+              </span>
+            </div>
+            <HashView hash={hash} detail={detail} />
+            <div className="steps">
+              <Step op="key" value={key0} note="(clientSeed : nonce : round)" />
+              <div className="divider" />
+              <Step op="hash[0, 15)" value={detail.headHex} note={"(= " + detail.headNum.toString() + ")"} />
+              <Step op="index" value={detail.index} note={"(" + detail.headNum.toString() + " % 47)"} />
+              <Step
+                op={"hash[" + detail.index + ", " + (detail.index + WINDOW_LEN) + ")"}
+                value={detail.windowHex}
+                note={"(= " + detail.windowNum.toString() + ")"}
+              />
+              <Step op="&gt;&gt; 3" value={detail.shifted.toString()} note="(keep the high 53 bits)" />
+              <Step op="×" value={detail.unit.toFixed(12)} note="(× 2 ^ -53)" />
+              <Step op="=" value={detail.scaled.toFixed(12)} note={"(× " + EVENTS + ")"} />
+              <div className="divider" />
+              <Step op="floor" value={detail.result} note="→ [0, ..., 51]" hit />
+              <Step
+                op={"allCards[" + detail.result + "]"}
+                value={cardId + " / 0x" + toHex(cardId) + "  " + getCardStr(cardId)}
+                hit
+              />
+            </div>
+          </div>
+        );
+      }
+
+      function DealTable({ deal }) {
+        const rows = [
+          { label: "round", render: (item) => item.round },
+          { label: "card", render: (item) => getCardStr(item.cardId), red: true },
+          { label: "point", render: (item) => pointValue(item.cardId) },
+          { label: "cardId", render: (item) => item.cardId + " / 0x" + toHex(item.cardId) },
+        ];
+        return (
+          <div className="table-wrap">
+            <table className="table table-sm table-bordered">
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.label}>
+                    <th>{row.label}</th>
+                    {deal.map((item) => (
+                      <td key={item.round} className={row.red && isRed(item.cardId) ? "text-red" : ""}>
+                        {row.render(item)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      function CardsTable({ hitIndexes }) {
+        const rows = [
+          { label: "index", render: (item, index) => index },
+          { label: "card", render: (item) => getCardStr(item), red: true },
+          { label: "cardId (dec)", render: (item) => item },
+          { label: "cardId (hex)", render: (item) => "0x" + toHex(item) },
+        ];
+        return (
+          <div className="table-wrap">
+            <table className="table table-sm table-bordered">
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.label}>
+                    <th>{row.label}</th>
+                    {allCards.map((item, index) => {
+                      const classNames = [];
+                      if (hitIndexes.indexOf(index) > -1) classNames.push("hit");
+                      else if (row.red && isRed(item)) classNames.push("text-red");
+                      return (
+                        <td key={index} className={classNames.join(" ")}>
+                          {row.render(item, index)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+
+      // `r` is how many cards to render, starting at round 0
+      const initialNonce = Number.isFinite(parseInt(qs.n)) ? parseInt(qs.n) : 0;
+      const roundFromQuery = Number.isFinite(parseInt(qs.r)) ? parseInt(qs.r) : null;
+
+      function BlackjackLite() {
+        const [state, setState, bind] = useInputControl({
+          serverSeed: qs.s || "",
+          clientSeed: qs.c || "",
+          nonce: initialNonce,
+          round: roundFromQuery !== null ? roundFromQuery : DEFAULT_ROUND,
+        });
+
+        const [copied, setCopied] = React.useState(false);
+        // `round` is the number of cards to render, taken from rounds 0 .. round - 1
+        const count = Math.min(Math.max(parseInt(state.round) || 0, 0), MAX_ROUND);
+        const nonce = Number.isFinite(parseInt(state.nonce)) ? parseInt(state.nonce) : 0;
+
+        const deal = state.serverSeed ? buildDeal(state.serverSeed, state.clientSeed, nonce, count) : [];
+        const hitIndexes = deal.map((item) => item.detail.result);
+        const resultStr = deal.map((item) => getCardStr(item.cardId)).join("  ");
+
+        const shareUrl = () => {
+          const query =
+            "?s=" +
+            encodeURIComponent(state.serverSeed) +
+            "&c=" +
+            encodeURIComponent(state.clientSeed) +
+            "&n=" +
+            nonce +
+            "&r=" +
+            count;
+          return location.href.replace(/\?.*$/, "") + query;
+        };
+
+        return (
+          <div className="main">
+            <h1 className="text-center">Blackjack Lite verify</h1>
+            <p className="text-center text-muted">
+              Every card is derived independently from serverSeed / clientSeed / nonce / round, so each one can be recomputed
+            </p>
+            <hr />
+
+            <h2 className="text-center">Algorithm</h2>
+            <pre className="code my-3">
+              1. hash = HMAC_SHA256(key = "clientSeed:nonce:round", secret = serverSeed){"\n"}
+              2. randomNumber = floor(slideWindowNumber(hash, 52)) in [0, 51]{"\n"}
+              3. card = allCards[randomNumber]
+            </pre>
+            <p className="text-muted small">
+              Rounds are 0-based, so a round of N renders the cards of rounds 0 to N-1. Each round takes its own hash, and cards are drawn with
+              replacement, so different rounds may return the same card.
+            </p>
+            <p className="text-muted small">
+              The seed fixes the order of the cards, never who receives them: that follows the player's actions (hit, stand, double, split),
+              which are not part of the seed. So this page shows only what the seed proves - how many cards were dealt and what each card is -
+              and does not split them into a dealer and a player hand.
+            </p>
+            <hr />
+
+            <h2 className="text-center">Input</h2>
+            <form className="py-3">
+              <div className="form-row">
+                <div className="col-md-6">
+                  <Field label="Server Seed" placeholder="serverSeed" {...bind("serverSeed")} />
+                </div>
+                <div className="col-md-6">
+                  <Field label="Client Seed" placeholder="clientSeed" {...bind("clientSeed")} />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="col-md-6">
+                  <Field label="Nonce" placeholder="0" {...bind("nonce")} />
+                </div>
+                <div className="col-md-6">
+                  <Field label={"Round (cards to render, max " + MAX_ROUND + ")"} placeholder="10" {...bind("round")} />
+                </div>
+              </div>
+              <p className="text-muted small">
+                A round of {count} renders {count} card(s), taken from rounds 0 to {Math.max(count - 1, 0)}. Raising it only reveals more of the
+                sequence, it never changes the earlier cards.
+              </p>
+              <button type="button" className="btn btn-primary btn-sm mr-2" onClick={() => history.replaceState(null, "", shareUrl())}>
+                Update Link
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline-secondary btn-sm"
+                onClick={() => {
+                  const url = shareUrl();
+                  history.replaceState(null, "", url);
+                  if (navigator.clipboard) {
+                    navigator.clipboard.writeText(url).then(() => {
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1500);
+                    });
+                  }
+                }}
+              >
+                {copied ? "Copied" : "Copy Verify Link"}
+              </button>
+            </form>
+            <hr />
+
+            <h2 className="text-center">Output</h2>
+            {deal.length === 0 ? (
+              <p className="text-muted py-3">Enter a Server Seed and how many cards to render.</p>
+            ) : (
+              <div className="py-3">
+                <div className="hand mb-3">
+                  {deal.map((item) => (
+                    <PlayingCard key={item.round} cardId={item.cardId} round={item.round} />
+                  ))}
+                </div>
+                <div className="form-group">
+                  <label>Cards ({count})</label>
+                  <input className="form-control mono" readOnly value={resultStr} />
+                </div>
+                <DealTable deal={deal} />
+              </div>
+            )}
+            <hr />
+
+            <h2 className="text-center">Source</h2>
+            <pre className="code my-3">{ALGORITHM_SOURCE}</pre>
+            <p className="text-muted small">
+              This is exactly what the page runs, so every number below can be reproduced with any HMAC-SHA256 tool.
+            </p>
+            <hr />
+
+            {deal.length > 0 && (
+              <React.Fragment>
+                <h2 className="text-center">Verification detail</h2>
+                <details className="py-3">
+                  <summary>Show the step-by-step derivation of {count} card(s)</summary>
+                  {deal.map((item) => (
+                    <Round key={item.round} round={item.round} key0={item.key} hash={item.hash} detail={item.detail} />
+                  ))}
+                </details>
+                <hr />
+              </React.Fragment>
+            )}
+
+            <h2 className="text-center">Cards table</h2>
+            <div className="py-3">
+              <CardsTable hitIndexes={hitIndexes} />
+              <p className="text-muted small mt-2">
+                allCards is built as suit × 16 + point, where ♠ = 10(A), ♥ = 11(B), ♣ = 12(C), ♦ = 13(D), and point is 1-13 (A 2 3 ... J Q K).
+              </p>
+            </div>
+          </div>
+        );
+      }
+
+      ReactDOM.render(<BlackjackLite />, document.getElementById("app"));
+    </script>
+  </body>
+</html>
